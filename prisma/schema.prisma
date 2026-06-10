@@ -1,13 +1,187 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum DecisionStatus {
+  DRAFT
+  OPEN
+  LOCKED
+  VETOED
+  EXPIRED
+}
+
+enum VoteStance {
+  APPROVE
+  BLOCK
+  NEEDS_MORE_INFO
+  ABSTAIN
+}
+
+enum ActivityType {
+  DECISION_PUBLISHED
+  VOTE_CAST
+  VOTE_CHANGED
+  COMMENT_ADDED
+  STAKEHOLDER_ADDED
+  DECISION_LOCKED
+  DECISION_VETOED
+  DECISION_EXPIRED
+  BLOCK_OVERRIDDEN
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  workspaces   WorkspaceMember[]
+  decisions    Decision[]        @relation("Creator")
+  stakeholders Stakeholder[]
+  votes        Vote[]
+  comments     Comment[]
+  activities   Activity[]
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+
+  members   WorkspaceMember[]
+  decisions Decision[]
+  tags      Tag[]
+}
+
+model WorkspaceMember {
+  id          String     @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        MemberRole @default(MEMBER)
+  joinedAt    DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model Decision {
+  id          String         @id @default(cuid())
+  title       String
+  context     String         @db.Text
+  options     String?        @db.Text
+  status      DecisionStatus @default(DRAFT)
+  deadline    DateTime?
+  workspaceId String
+  creatorId   String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  lockedAt    DateTime?
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator      User          @relation("Creator", fields: [creatorId], references: [id])
+  stakeholders Stakeholder[]
+  votes        Vote[]
+  comments     Comment[]
+  tags         DecisionTag[]
+  activities   Activity[]
+}
+
+model Stakeholder {
+  id         String  @id @default(cuid())
+  decisionId String
+  userId     String
+  required   Boolean @default(true)
+
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([decisionId, userId])
+}
+
+model Vote {
+  id         String     @id @default(cuid())
+  decisionId String
+  userId     String
+  stance     VoteStance
+  reasoning  String     @db.Text
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([decisionId, userId])
+}
+
+model Comment {
+  id         String    @id @default(cuid())
+  decisionId String
+  authorId   String
+  body       String    @db.Text
+  parentId   String?
+  createdAt  DateTime  @default(now())
+  editedAt   DateTime?
+
+  decision Decision  @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("Replies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies  Comment[] @relation("Replies")
+}
+
+model Tag {
+  id          String  @id @default(cuid())
+  name        String
+  color       String  @default("#6366f1")
+  workspaceId String
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decisions DecisionTag[]
+
+  @@unique([workspaceId, name])
+}
+
+model DecisionTag {
+  decisionId String
+  tagId      String
+
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([decisionId, tagId])
+}
+
+model Activity {
+  id         String       @id @default(cuid())
+  decisionId String
+  actorId    String
+  type       ActivityType
+  payload    Json
+  createdAt  DateTime     @default(now())
+
+  decision Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  actor    User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
 }
