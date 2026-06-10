@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -48,18 +45,37 @@ enum ActivityType {
 
 model User {
   id        String   @id @default(cuid())
-  clerkId   String   @unique
+  clerkId   String?  @unique   // null for AI agents
   email     String   @unique
   name      String
   avatarUrl String?
+  isAgent   Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  agentPersona AgentPersona?
   workspaces   WorkspaceMember[]
   decisions    Decision[]        @relation("Creator")
   stakeholders Stakeholder[]
   votes        Vote[]
   comments     Comment[]
   activities   Activity[]
+}
+
+// An AI persona attached to a workspace.
+// Each persona gets a real User record (isAgent=true) so all vote/comment
+// logic works without changes.
+model AgentPersona {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  userId       String   @unique  // the User record this agent votes as
+  name         String            // e.g. "PM Agent"
+  role         String            // e.g. "Product Manager"
+  emoji        String   @default("🤖")
+  systemPrompt String   @db.Text // the persona instructions sent to Claude
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Workspace {
@@ -70,9 +86,10 @@ model Workspace {
   logoUrl     String?
   createdAt   DateTime @default(now())
 
-  members   WorkspaceMember[]
-  decisions Decision[]
-  tags      Tag[]
+  members      WorkspaceMember[]
+  decisions    Decision[]
+  tags         Tag[]
+  agentPersonas AgentPersona[]
 }
 
 model WorkspaceMember {
